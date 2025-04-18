@@ -6,107 +6,46 @@ on:
       AWS_REGION:
         type: string
         required: true
+      spec:
+        description: "Path to the Digger config file."
+        required: false
+        type: string
+      run_name:
+        description: "Optional name for the run."
+        required: false
+        type: string
     secrets:
       AWS_IAM_ROLE:
         required: true
 
-# This is ignored when called, but good for clarity
-# add this permission to your workflow
-permissions:
-  contents: read
-  pull-requests: write
-  id-token: write
-
 jobs:
   terraform-run:
-    name: 'terraform-run'
     runs-on: ubuntu-latest
+    # This is ignored when called, but good for clarity
+    # add this permission to your workflow
+    permissions:
+      contents: write      # required to merge PRs
+      actions: write       # required for plan persistence
+      id-token: write      # required for workload-identity-federation
+      pull-requests: write # required to post PR comments
+      issues: read         # required to check if PR number is an issue or not
+      statuses: write      # required to validate combined PR status
 
     steps:
     - name: Checkout
       uses: actions/checkout@v4
-    
-    - uses: hashicorp/setup-terraform@v3
 
-    - name: AWS Credentials
-      uses: aws-actions/configure-aws-credentials@v4
+    - name: Job id
+      run: echo "Job id ${{ fromJSON(github.event.inputs.spec).job_id }}"
+    
+    - uses: diggerhq/digger@v0.6.97
+      name: Digger Run
       with:
-        role-to-assume: ${{ secrets.AWS_IAM_ROLE }}
-        role-session-name: github-actions-session
+        setup-aws: true
+        setup-terraform: true
+        aws-role-to-assume: ${{ secrets.AWS_IAM_ROLE }}
         aws-region: ${{ inputs.AWS_REGION }}
-    
-    - name: Terraform fmt
-      id: fmt
-      run: make fmt
-      continue-on-error: true
-    
-    - name: Terraform Init
-      id: init
-      run: make init
-    
-    - name: Terraform Validate
-      id: validate
-      run: make validate
-    
-    - name: Terraform Plan
-      id: plan
-      run: make plan
-      continue-on-error: true
-    
-    - uses: actions/github-script@v7
-      if: github.event_name == 'pull_request'
+        upload-plan-destination: github
       env:
-        PLAN: "terraform\n${{ steps.plan.outputs.stdout }}"
-      with:
-        github-token: ${{ secrets.GITHUB_TOKEN }}
-        script: |
-          // 1. Retrieve existing bot comments for the PR
-          const { data: comments } = await github.rest.issues.listComments({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: context.issue.number,
-          })
-          const botComment = comments.find(comment => {
-            return comment.user.type === 'Bot' && comment.body.includes('Terraform Format and Style')
-          })
-    
-          // 2. Prepare format of the comment
-          const output = `#### Terraform Format and Style 🖌\`${{ steps.fmt.outcome }}\`
-          #### Terraform Initialization ⚙️\`${{ steps.init.outcome }}\`
-          #### Terraform Validation 🤖\`${{ steps.validate.outcome }}\`
-          <details><summary>Validation Output</summary>
-    
-          \`\`\`\n
-          ${{ steps.validate.outputs.stdout }}
-          \`\`\`
-    
-          </details>
-    
-          #### Terraform Plan 📖\`${{ steps.plan.outcome }}\`
-    
-          <details><summary>Show Plan</summary>
-    
-          \`\`\`\n
-          ${process.env.PLAN}
-          \`\`\`
-    
-          </details>
-    
-          *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ env.tf_actions_working_dir }}\`, Workflow: \`${{ github.workflow }}\`*`;
-    
-          // 3. If we have a comment, update it, otherwise create a new one
-          if (botComment) {
-            github.rest.issues.updateComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: botComment.id,
-              body: output
-            })
-          } else {
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: output
-            })
-          }
+        GITHUB_CONTEXT: ${{ toJson(github) }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
