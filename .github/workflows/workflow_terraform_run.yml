@@ -20,9 +20,10 @@ on:
 
 jobs:
   terraform-run:
+    name: ${{ inputs.run_name || 'Digger Run' }}
     runs-on: ubuntu-latest
     # This is ignored when called, but good for clarity
-    # add this permission to your workflow
+    # add these permissions to your workflow
     permissions:
       contents: write      # required to merge PRs
       actions: write       # required for plan persistence
@@ -49,3 +50,4 @@ jobs:
       env:
         GITHUB_CONTEXT: ${{ toJson(github) }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_EVENT_NAME: "pull_request"  # 👈 this fakes a valid type so Digger CLI doesn't crash
