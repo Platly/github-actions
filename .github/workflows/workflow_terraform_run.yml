@@ -8,7 +8,7 @@ on:
         required: true
       spec:
         description: "Path to the Digger config file."
-        required: false
+        required: true
         type: string
       run_name:
         description: "Optional name for the run."
@@ -19,8 +19,8 @@ on:
         required: true
 
 jobs:
-  terraform-run:
-    name: ${{ inputs.run_name || 'Digger Run' }}
+  digger-job:
+    name: Digger Job
     runs-on: ubuntu-latest
     # This is ignored when called, but good for clarity
     # add these permissions to your workflow
@@ -38,16 +38,19 @@ jobs:
 
     - name: Job id
       run: echo "Job id ${{ fromJSON(github.event.inputs.spec).job_id }}"
+
+    - name: Debug Digger Spec
+      run: echo '${{ inputs.spec }}'
     
     - uses: diggerhq/digger@v0.6.97
-      name: Digger Run
+      name: ${{ inputs.run_name || 'Digger Run' }}
       with:
         setup-aws: true
         setup-terraform: true
+        digger-spec: ${{ inputs.spec }}
         aws-role-to-assume: ${{ secrets.AWS_IAM_ROLE }}
         aws-region: ${{ inputs.AWS_REGION }}
         upload-plan-destination: github
       env:
         GITHUB_CONTEXT: ${{ toJson(github) }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        GITHUB_EVENT_NAME: "pull_request"  # 👈 this fakes a valid type so Digger CLI doesn't crash
